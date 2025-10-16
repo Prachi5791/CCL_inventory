@@ -66,6 +66,8 @@ jobs:
       contents: read
 
     steps:
+      - uses: actions/checkout@v4  # <-- ADDED: Checkout repo so client folder is available
+
       - name: Download backend artifact from build job
         uses: actions/download-artifact@v4
         with:
