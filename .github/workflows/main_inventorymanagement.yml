@@ -1,100 +1,58 @@
-name: Build and deploy Node.js app to Azure Web App - InventoryManagement
+name: Azure Static Web Apps CI/CD
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - main
 
 jobs:
-  build-backend:
+  build_and_deploy_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
+    name: Build and Deploy Job
     permissions:
-      contents: read
-
-    defaults:
-      run:
-        working-directory: ./server
-
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      JWT_SECRET: ${{ secrets.JWT_SECRET }}
-      NODE_ENV: dev
-      PORT: 8000
-
+       id-token: write
+       contents: read
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js version
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v3
         with:
-          node-version: '22.x'
-
-      - name: npm install, build, and test backend
-        run: |
-          npm install
-          npm run build --if-present
-          npm run test --if-present
-
-      - name: Upload backend artifact for deployment job
-        uses: actions/upload-artifact@v4
+          submodules: true
+          lfs: false
+      - name: Install OIDC Client from Core Package
+        run: npm install @actions/core@1.6.0 @actions/http-client
+      - name: Get Id Token
+        uses: actions/github-script@v6
+        id: idtoken
         with:
-          name: node-app
-          path: ./server
-
-  build-frontend:
-    runs-on: ubuntu-latest
-    needs: build-backend
-    env:
-      VITE_BASE_URL: "https://inventorymanagement-ceejhxa2e2hvgqe6.centralindia-01.azurewebsites.net/api/v1"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Node.js version
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18.x'
-      - name: Install frontend dependencies
-        run: npm install --prefix client
-      - name: Build frontend
-        run: npm run build --prefix client
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: [build-backend, build-frontend]
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v4  # <-- ADDED: Checkout repo so client folder is available
-
-      - name: Download backend artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
-          path: ./server
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_FA8A5FC0D51C4B9896C508BE03A1B832 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_47588C4A86C649AEB1C1AF73FD313149 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_42909B60E70E4EE1B3F79FD7B87D0801 }}
-
-      - name: Deploy backend to Azure Web App
-        id: deploy-backend
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'InventoryManagement'
-          slot-name: 'Production'
-          package: ./server
-
-      - name: Deploy frontend to Azure Static Web App
+           script: |
+               const coredemo = require('@actions/core')
+               return await coredemo.getIDToken()
+           result-encoding: string
+      - name: Build And Deploy
+        id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_MANGO_ROCK_085887A00 }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
-          app_location: "client"
-          output_location: "dist"
-          api_location: ""
+          ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
+          # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
+          app_location: "./client" # App source code path
+          api_location: "" # Api source code path - optional
+          output_location: "dist" # Built app content directory - optional
+          github_id_token: ${{ steps.idtoken.outputs.result }}
+          ###### End of Repository/Build Configurations ######
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    steps:
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          action: "close"
